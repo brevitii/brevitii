@@ -1,6 +1,6 @@
 import discord
 import os
-from config import MAXIMUM_GEMINI_REQUEST_MESSAGE_LENGTH, MAXIMUM_MESSAGES_COLLECTION_LENGTH, MAXIMUM_MESSAGES_COLLECTION_BATCH_SIZE, MAXIMUM_DISCORD_MESSAGE_LENGTH
+from config import MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS, MAXIMUM_MESSAGES_COLLECTION_LENGTH, MAXIMUM_MESSAGES_COLLECTION_BATCH_SIZE, MAXIMUM_DISCORD_MESSAGE_LENGTH
 
 import google.generativeai as genai
 
@@ -79,6 +79,13 @@ async def on_message(message) -> None:
   # Clean before create.
   clean(prompt_body_file_path)
 
+  ##############################################
+  #
+  # Here we collect our messages from the chat
+  # history.
+  #
+  ##############################################
+
   # Collect the last `num_messages` messages
   await collect_messages_and_build_prompt(m_channel, prompt_body_file_path,
                                           num_messages)
@@ -92,15 +99,43 @@ async def on_message(message) -> None:
   prompt_header_file_path = os.path.join(script_dir, 'prompt_header.txt')
 
   # Read the header
-  with open(prompt_header_file_path, 'rb') as file:
-    prompt_header = file.read().decode('utf-8')
+  with open(prompt_header_file_path, 'r', encoding='utf-8') as file:
+    file.seek(0)  # Move the file pointer to the beginning
+    prompt_header = file.read()
 
   # Read the body
-  with open(prompt_body_file_path, 'rb') as file:
-    prompt_body = file.read().decode('utf-8')
+  with open(prompt_body_file_path, 'a+', encoding='utf-8') as file:
+    file.seek(0)  # Move the file pointer to the beginning
+    prompt_body = file.read()
 
   greeting_sentence = 'Hello Gemini!  My name is {}.\n\n'.format(author_name)
   end_sentence = '\n\nConversation ends NOW'
+
+  # Currently, we are supporting the text only model
+  model = genai.GenerativeModel('gemini-pro')
+
+  # Here we need to check on our body, if it matches (with header and footer) Gemini's maximum length.
+  # The header and footer are the same for all messages so we need to truncate only the body.
+  # Check https://ai.google.dev/gemini-api/docs/models/gemini#model-variations for more information.
+  # Note: For Gemini models, a token is equivalent to about 4 characters. 100 tokens are about 60-80 English words.
+  # Truncate the prompt based on the maximum token limit.
+  while True:
+      temp_prompt = greeting_sentence + '{}\n\n'.format(prompt_header) \
+          + prompt_body + end_sentence
+
+      temp_num_tokens = model.count_tokens(temp_prompt).total_tokens
+    
+      if (temp_num_tokens <= MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS):
+        break
+
+      # Calculate the percentage of excess tokens
+      excess_percentage = (temp_num_tokens - MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS) / temp_num_tokens
+
+      # Calculate the number of characters to remove based on the percentage
+      chars_to_remove = int(len(prompt_body) * excess_percentage)
+
+      # Truncate the prompt by removing the calculated number of characters from the end
+      prompt_body = prompt_body[:-chars_to_remove]
 
   prompt = greeting_sentence + '{}\n\n'.format(
       prompt_header) + prompt_body + end_sentence
@@ -111,12 +146,9 @@ async def on_message(message) -> None:
   clean(temp_prompt_file_path)
 
   # Save the full prompt to a file
-  with open(temp_prompt_file_path, 'w') as file:
+  with open(temp_prompt_file_path, 'w', encoding='utf-8') as file:
     file.write(prompt)
-
-  # Currently, we are supporting the text only model
-  model = genai.GenerativeModel('gemini-pro')
-
+  
   try:
     response = model.generate_content(prompt)
   except Exception as e:
@@ -151,7 +183,8 @@ async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
 
   def write_prompt_to_file(collected_msgs: list,
                            prompt_body_file_path) -> None:
-    with open(prompt_body_file_path, 'a') as file:
+    with open(prompt_body_file_path, 'a', encoding='utf-8') as file:
+      file.seek(0)  # Move the file pointer to the beginning
       for collected_msg in collected_msgs:
         collected_msg_author = collected_msg.author
 
