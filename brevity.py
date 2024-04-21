@@ -170,7 +170,10 @@ async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
     write_prompt_to_file(collected_msgs, prompt_body_file_path)
     collected_msgs.clear()
     del collected_msgs
+    
+from brevity_pinger import listen
 
+listen()
 
 # Run Brevity client.
 client.run(os.environ['DISCORD_TOKEN'])
