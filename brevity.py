@@ -106,7 +106,14 @@ async def on_message(message) -> None:
   # Currently, we are supporting the text only model
   model = genai.GenerativeModel('gemini-pro')
 
-  response = model.generate_content(prompt)
+  try:
+    response = model.generate_content(prompt)
+  except Exception as e:
+    print("An unexpected error occurred with Gemini: ", e)
+    await m_author.send(
+        "Hmmm, it seems like Gemini is down. Please talk to k0T0z about this. Thanks!"
+    )
+    return
 
   brevity_response = 'Here is the abbreviation of the last {} messages in the "{}" channel of the "{}" server:\n\n' \
                   '{}'.format(num_messages, channel_name, server_name, response.text)
