@@ -14,6 +14,11 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 
+def clean(file_path):
+  if (os.path.exists(file_path)):
+    os.remove(file_path)
+
+
 @client.event
 async def on_ready():
   print('We have logged in as {}'.format(client.user))
@@ -71,6 +76,9 @@ async def on_message(message) -> None:
   script_dir = os.path.dirname(os.path.realpath(__file__))
   prompt_body_file_path = os.path.join(script_dir, 'prompt_body.txt')
 
+  # Clean before create.
+  clean(prompt_body_file_path)
+
   # Collect the last `num_messages` messages
   await collect_messages_and_build_prompt(m_channel, prompt_body_file_path,
                                           num_messages)
@@ -98,6 +106,9 @@ async def on_message(message) -> None:
       prompt_header) + prompt_body + end_sentence
 
   temp_prompt_file_path = os.path.join(script_dir, 'prompt.txt')
+
+  # Clean before create.
+  clean(temp_prompt_file_path)
 
   # Save the full prompt to a file
   with open(temp_prompt_file_path, 'w') as file:
@@ -128,10 +139,6 @@ async def on_message(message) -> None:
                                            MAXIMUM_DISCORD_MESSAGE_LENGTH])
   else:
     await m_author.send(brevity_response)
-
-  # Delete prompt.txt and prompt_body.txt
-  os.remove(prompt_body_file_path)
-  os.remove(temp_prompt_file_path)
 
 
 async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
