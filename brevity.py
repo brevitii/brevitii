@@ -97,8 +97,10 @@ async def on_message(message) -> None:
   prompt = greeting_sentence + '{}\n\n'.format(
       prompt_header) + prompt_body + end_sentence
 
+  temp_prompt_file_path = os.path.join(script_dir, 'prompt.txt')
+
   # Save the full prompt to a file
-  with open(os.path.join(script_dir, 'prompt.txt'), 'w') as file:
+  with open(temp_prompt_file_path, 'w') as file:
     file.write(prompt)
 
   # Currently, we are supporting the text only model
@@ -119,6 +121,10 @@ async def on_message(message) -> None:
                                            MAXIMUM_DISCORD_MESSAGE_LENGTH])
   else:
     await m_author.send(brevity_response)
+
+  # Delete prompt.txt and prompt_body.txt
+  os.remove(prompt_body_file_path)
+  os.remove(temp_prompt_file_path)
 
 
 async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
@@ -170,10 +176,11 @@ async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
     write_prompt_to_file(collected_msgs, prompt_body_file_path)
     collected_msgs.clear()
     del collected_msgs
-    
-from brevity_pinger import listen
 
-listen()
+
+from brevity_pinger import listen_for_brevity
+
+listen_for_brevity()
 
 # Run Brevity client.
 client.run(os.environ['DISCORD_TOKEN'])
