@@ -156,7 +156,7 @@ async def on_message(message) -> None:
     prompt_body = file.read()
 
   greeting_sentence = 'Hello Gemini!  My name is {}.\n\n'.format(author_name)
-  end_sentence = '\n\nConversation ends NOW'
+  end_sentence = '\n\nConversation ends NOW\n'
 
   # Currently, we are supporting the text only model
   model = genai.GenerativeModel('gemini-pro')
