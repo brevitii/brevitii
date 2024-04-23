@@ -1,10 +1,20 @@
 import discord
 import os
+import time
+import math
 from config import MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS, MAXIMUM_MESSAGES_COLLECTION_LENGTH, MAXIMUM_MESSAGES_COLLECTION_BATCH_SIZE, MAXIMUM_DISCORD_MESSAGE_LENGTH
 
 import google.generativeai as genai
 
 genai.configure(api_key=os.environ['GOOGLE_API_KEY'])
+
+# Dictionary to store the last message timestamp of each user
+# TODO: Consider using a database instead of a dictionary.
+last_message_timestamps = {}
+
+# Define the cooldown period in seconds
+# Brevity can not serve the same user within the same 12-hour period.
+COOLDOWN_PERIOD = 12 * 3600  # 12 hours in seconds
 
 intents = discord.Intents.default()
 
@@ -19,6 +29,27 @@ def clean(file_path):
     os.remove(file_path)
 
 
+def is_message_allowed(user_id) -> bool:
+  # Check if the user's ID is in the last_message_timestamps dictionary
+  if user_id in last_message_timestamps:
+    # Get the timestamp of the user's last message
+    last_message_time = last_message_timestamps[user_id]
+    # Get the current time
+    current_time = time.time()
+    # Check if the time difference is greater than the cooldown period
+    if current_time - last_message_time >= COOLDOWN_PERIOD:
+      # If the cooldown period has passed, update the timestamp
+      last_message_timestamps[user_id] = current_time
+      return True
+
+    # If the cooldown period has not passed, the user is not allowed to send a message
+    return False
+
+  # If the user's ID is not in the dictionary, they are allowed to send a message
+  last_message_timestamps[user_id] = time.time()
+  return True
+
+
 @client.event
 async def on_ready():
   print('We have logged in as {}'.format(client.user))
@@ -26,13 +57,17 @@ async def on_ready():
 
 @client.event
 async def on_message(message) -> None:
-  # We only need brevity to respond to our own messages but not her own.
-  # We do this by checking if the Message.author is the same as the Client.user.
-  if message.author == client.user:
-    return
-
   m_author: discord.User = message.author
   m_guild: discord.Guild = message.guild
+
+  # We only need brevity to respond to our own messages but not her own.
+  # We do this by checking if the Message.author is the same as the Client.user.
+  if m_author == client.user:
+    return
+
+  if not m_guild:  # Ignore messages in DMs
+    return
+
   # Check https://discordpy.readthedocs.io/en/stable/api.html#discord.TextChannel for more information on TextChannel
   m_channel: discord.TextChannel = message.channel
   m_content: str = message.content
@@ -63,10 +98,22 @@ async def on_message(message) -> None:
                          'Example: `$brief 5`\n')
     return
 
-  num_messages = None
+  num_messages = -1
 
   if len(args) > 1:
-    num_messages = args[1]
+    # Check https://docs.python.org/3/library/stdtypes.html#str.isdigit for more information on isdigit.
+    if not args[1].isdigit():
+      await m_channel.send(
+          'Please provide a valid number of messages to abbreviate.\n')
+      return
+    num_messages = int(args[1])
+
+  # Check if the user is allowed to send a message or not.
+  if not is_message_allowed(m_author.id):
+    await m_channel.send(
+        'Sorry {}, I can not serve you twice within the same 12-hour period.\n'
+        .format(author_global_name))
+    return
 
   await m_channel.send(
       'Cool {}! I will send you the abbreviation of the last {} messages in private.'
@@ -114,31 +161,38 @@ async def on_message(message) -> None:
   # Currently, we are supporting the text only model
   model = genai.GenerativeModel('gemini-pro')
 
+  prompt = greeting_sentence + '{}\n\n'.format(
+      prompt_header) + prompt_body + end_sentence
+
+  #########################################################################
   # Here we need to check on our body, if it matches (with header and footer) Gemini's maximum length.
   # The header and footer are the same for all messages so we need to truncate only the body.
   # Check https://ai.google.dev/gemini-api/docs/models/gemini#model-variations for more information.
   # Note: For Gemini models, a token is equivalent to about 4 characters. 100 tokens are about 60-80 English words.
   # Truncate the prompt based on the maximum token limit.
+
   while True:
-      temp_prompt = greeting_sentence + '{}\n\n'.format(prompt_header) \
-          + prompt_body + end_sentence
+    num_tokens = model.count_tokens(prompt).total_tokens
+    print(f'Prompt has {num_tokens} tokens.')
 
-      temp_num_tokens = model.count_tokens(temp_prompt).total_tokens
-    
-      if (temp_num_tokens <= MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS):
-        break
+    if (num_tokens <= MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS):
+      break
 
-      # Calculate the percentage of excess tokens
-      excess_percentage = (temp_num_tokens - MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS) / temp_num_tokens
+    # Calculate the percentage of excess tokens
+    excess_percentage = (num_tokens -
+                         MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS) / num_tokens
 
-      # Calculate the number of characters to remove based on the percentage
-      chars_to_remove = int(len(prompt_body) * excess_percentage)
+    # Calculate the number of characters to remove based on the percentage
+    # Here we round because we need
+    chars_to_remove = math.ceil((len(prompt_body) * excess_percentage))
 
-      # Truncate the prompt by removing the calculated number of characters from the end
-      prompt_body = prompt_body[:-chars_to_remove]
+    # Truncate the prompt by removing the calculated number of characters from the end
+    prompt_body = prompt_body[:-chars_to_remove]
 
-  prompt = greeting_sentence + '{}\n\n'.format(
-      prompt_header) + prompt_body + end_sentence
+    prompt = greeting_sentence + '{}\n\n'.format(
+        prompt_header) + prompt_body + end_sentence
+
+  #########################################################################
 
   temp_prompt_file_path = os.path.join(script_dir, 'prompt.txt')
 
@@ -148,18 +202,22 @@ async def on_message(message) -> None:
   # Save the full prompt to a file
   with open(temp_prompt_file_path, 'w', encoding='utf-8') as file:
     file.write(prompt)
-  
+
   try:
     response = model.generate_content(prompt)
   except Exception as e:
     print("An unexpected error occurred with Gemini: ", e)
     await m_author.send(
-        "Hmmm, it seems like Gemini is down. Please talk to k0T0z about this. Thanks!"
+        "Hmmmm, it seems like Gemini is down. Please talk to k0T0z about this. Thanks!"
     )
     return
 
-  brevity_response = 'Here is the abbreviation of the last {} messages in the "{}" channel of the "{}" server:\n\n' \
-                  '{}'.format(num_messages, channel_name, server_name, response.text)
+  try:
+    brevity_response = 'Here is the abbreviation of the last {} messages in the "{}" channel of the "{}" server:\n\n' \
+    '{}'.format(num_messages, channel_name, server_name, response.text)
+  except Exception as e:
+    print("Error accessing response text:", e)
+    return
 
   # Without Discord nitro, the maximum message length is 2000 characters. We need to split the message into multiple messages.
   # With Discord nitro, the maximum message length is 4000 characters.
@@ -173,13 +231,38 @@ async def on_message(message) -> None:
     await m_author.send(brevity_response)
 
 
+async def get_num_brevity_messages(m_channel_history) -> int:
+  num_brevity_messages = 0
+
+  async for msg in m_channel_history:
+    m_content = msg.content
+
+    # Count messages sent from and to Brevity.
+    if msg.author != client.user and not m_content.startswith('$brief'):
+      continue
+
+    num_brevity_messages += 1
+
+  return num_brevity_messages
+
+
 async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
                                             prompt_body_file_path,
-                                            num_messages: int = None):
-  if not num_messages:
+                                            num_messages: int = -1):
+  if num_messages == -1:
     num_messages = MAXIMUM_MESSAGES_COLLECTION_LENGTH
 
-  m_channel_history = m_channel.history(limit=int(num_messages))
+  m_channel_history = m_channel.history(limit=num_messages)
+
+  # Here we remove Brevity's messages from the number of messages required for
+  # abbreviation. We add this value of the num_messages to make sure that we
+  # abbreviate the num_messages purely.
+  num_brevity_messages = await get_num_brevity_messages(m_channel_history)
+
+  del m_channel_history
+
+  m_channel_history = m_channel.history(limit=num_messages +
+                                        num_brevity_messages)
 
   def write_prompt_to_file(collected_msgs: list,
                            prompt_body_file_path) -> None:
@@ -201,8 +284,10 @@ async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
 
   collected_msgs = []
   async for msg in m_channel_history:
-    # Skip messages sent by Brevity
-    if msg.author == client.user:
+    m_content = msg.content
+
+    # Skip messages sent from and to Brevity.
+    if msg.author == client.user or m_content.startswith('$brief'):
       continue
 
     # Skip messages that are empty

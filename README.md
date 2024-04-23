@@ -23,3 +23,7 @@ then run using:
 ```bash
 python brevity.py
 ```
+
+# Improving Gemini's prompt for Brevity
+
+See [Prompting Intro](https://ai.google.dev/gemini-api/docs/prompting-intro) by Google.
