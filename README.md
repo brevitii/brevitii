@@ -3,6 +3,14 @@
 > [!IMPORTANT]
 > Here is the invite link: https://discord.com/oauth2/authorize?client_id=1230505478967005224&permissions=68608&scope=bot
 
+# Usage
+
+You can call Brevity by ``$brief`` and then tell her how many messages you want to abbreviate. For example:
+
+```
+$brief 10000
+```
+
 # Compiling
 
 Create a .env file that contains the following:
