@@ -109,11 +109,11 @@ async def on_message(message) -> None:
     num_messages = int(args[1])
 
   # Check if the user is allowed to send a message or not.
-  if not is_message_allowed(m_author.id):
-    await m_channel.send(
-        'Sorry {}, I can not serve you twice within the same 12-hour period.\n'
-        .format(author_global_name))
-    return
+  # if not is_message_allowed(m_author.id):
+  #   await m_channel.send(
+  #       'Sorry {}, I can not serve you twice within the same 12-hour period.\n'
+  #       .format(author_global_name))
+  #   return
 
   await m_channel.send(
       'Cool {}! I will send you the abbreviation of the last {} messages in private.'
@@ -187,7 +187,8 @@ async def on_message(message) -> None:
     chars_to_remove = math.ceil((len(prompt_body) * excess_percentage))
 
     # Truncate the prompt by removing the calculated number of characters from the end
-    prompt_body = prompt_body[:-chars_to_remove]
+    # We opt to truncate from the beginning of the body since less crucial messages typically reside there.
+    prompt_body = prompt_body[chars_to_remove:]
 
     prompt = greeting_sentence + '{}\n\n'.format(
         prompt_header) + prompt_body + end_sentence
