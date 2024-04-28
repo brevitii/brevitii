@@ -173,7 +173,7 @@ async def on_message(message) -> None:
 
   while True:
     num_tokens = model.count_tokens(prompt).total_tokens
-    print(f'Prompt has {num_tokens} tokens.')
+    # print(f'Prompt has {num_tokens} tokens.')
 
     if (num_tokens <= MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS):
       break
