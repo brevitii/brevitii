@@ -5,12 +5,12 @@ app = Flask(__name__)
 
 # @app.route('/')
 # def home():
-#     return "Hello, I am Brevity's Pinger!"
+#     return "Hello, I am Brevitii's Pinger!"
 
 
 @app.route("/")
 def index():
-  return "Hello, I am Brevity's Pinger!"
+  return "Hello, I am Brevitii's Pinger!"
 
 
 def run():
@@ -19,6 +19,6 @@ def run():
   serve(app, host="0.0.0.0", port=8080)
 
 
-def listen_for_brevity():
+def listen_for_brevitii():
   t = Thread(target=run)
   t.start()

@@ -1,11 +1,11 @@
-# Brevity Bot
+# Brevitii Bot
 
 > [!IMPORTANT]
 > Here is the invite link: https://discord.com/oauth2/authorize?client_id=1230505478967005224&permissions=68608&scope=bot
 
 # Usage
 
-You can call Brevity by ``$brief`` and then tell her how many messages you want to abbreviate. For example:
+You can call Brevitii by ``$brief`` and then tell her how many messages you want to abbreviate. For example:
 
 ```
 $brief 10000
@@ -29,9 +29,9 @@ pip install -r requirements.txt
 then run using:
 
 ```bash
-python brevity.py
+python brevitii.py
 ```
 
-# Improving Gemini's prompt for Brevity
+# Improving Gemini's prompt for Brevitii
 
 See [Prompting Intro](https://ai.google.dev/gemini-api/docs/prompting-intro) by Google.

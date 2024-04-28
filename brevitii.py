@@ -13,7 +13,7 @@ genai.configure(api_key=os.environ['GOOGLE_API_KEY'])
 last_message_timestamps = {}
 
 # Define the cooldown period in seconds
-# Brevity can not serve the same user within the same 12-hour period.
+# Brevitii can not serve the same user within the same 12-hour period.
 COOLDOWN_PERIOD = 12 * 3600  # 12 hours in seconds
 
 intents = discord.Intents.default()
@@ -60,7 +60,7 @@ async def on_message(message) -> None:
   m_author: discord.User = message.author
   m_guild: discord.Guild = message.guild
 
-  # We only need brevity to respond to our own messages but not her own.
+  # We only need brevitii to respond to our own messages but not her own.
   # We do this by checking if the Message.author is the same as the Client.user.
   if m_author == client.user:
     return
@@ -85,7 +85,7 @@ async def on_message(message) -> None:
     return
 
   if not m_content.startswith('$brief'):
-    print('Message is not for Brevity')
+    print('Message is not for Brevitii')
     return
 
   # Split message content by spaces
@@ -214,7 +214,7 @@ async def on_message(message) -> None:
     return
 
   try:
-    brevity_response = 'Here is the abbreviation of the last {} messages in the "{}" channel of the "{}" server:\n\n' \
+    brevitii_response = 'Here is the abbreviation of the last {} messages in the "{}" channel of the "{}" server:\n\n' \
     '{}'.format(num_messages, channel_name, server_name, response.text)
   except Exception as e:
     print("Error accessing response text:", e)
@@ -222,29 +222,29 @@ async def on_message(message) -> None:
 
   # Without Discord nitro, the maximum message length is 2000 characters. We need to split the message into multiple messages.
   # With Discord nitro, the maximum message length is 4000 characters.
-  if len(brevity_response) > MAXIMUM_DISCORD_MESSAGE_LENGTH:
+  if len(brevitii_response) > MAXIMUM_DISCORD_MESSAGE_LENGTH:
     # Split the message into multiple messages
     # https://stackoverflow.com/questions/9475241/split-python-string-every-nth-character
-    for i in range(0, len(brevity_response), MAXIMUM_DISCORD_MESSAGE_LENGTH):
-      await m_author.send(brevity_response[i:i +
+    for i in range(0, len(brevitii_response), MAXIMUM_DISCORD_MESSAGE_LENGTH):
+      await m_author.send(brevitii_response[i:i +
                                            MAXIMUM_DISCORD_MESSAGE_LENGTH])
   else:
-    await m_author.send(brevity_response)
+    await m_author.send(brevitii_response)
 
 
-async def get_num_brevity_messages(m_channel_history) -> int:
-  num_brevity_messages = 0
+async def get_num_brevitii_messages(m_channel_history) -> int:
+  num_brevitii_messages = 0
 
   async for msg in m_channel_history:
     m_content = msg.content
 
-    # Count messages sent from and to Brevity.
+    # Count messages sent from and to Brevitii.
     if msg.author != client.user and not m_content.startswith('$brief'):
       continue
 
-    num_brevity_messages += 1
+    num_brevitii_messages += 1
 
-  return num_brevity_messages
+  return num_brevitii_messages
 
 
 async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
@@ -255,15 +255,15 @@ async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
 
   m_channel_history = m_channel.history(limit=num_messages)
 
-  # Here we remove Brevity's messages from the number of messages required for
+  # Here we remove Brevitii's messages from the number of messages required for
   # abbreviation. We add this value of the num_messages to make sure that we
   # abbreviate the num_messages purely.
-  num_brevity_messages = await get_num_brevity_messages(m_channel_history)
+  num_brevitii_messages = await get_num_brevitii_messages(m_channel_history)
 
   del m_channel_history
 
   m_channel_history = m_channel.history(limit=num_messages +
-                                        num_brevity_messages)
+                                        num_brevitii_messages)
 
   def write_prompt_to_file(collected_msgs: list,
                            prompt_body_file_path) -> None:
@@ -287,7 +287,7 @@ async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
   async for msg in m_channel_history:
     m_content = msg.content
 
-    # Skip messages sent from and to Brevity.
+    # Skip messages sent from and to Brevitii.
     if msg.author == client.user or m_content.startswith('$brief'):
       continue
 
@@ -311,9 +311,9 @@ async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
     del collected_msgs
 
 
-from brevity_pinger import listen_for_brevity
+from brevitii_pinger import listen_for_brevitii
 
-listen_for_brevity()
+listen_for_brevitii()
 
-# Run Brevity client.
+# Run Brevitii client.
 client.run(os.environ['DISCORD_TOKEN'])

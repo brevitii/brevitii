@@ -1,4 +1,4 @@
-I want you to summarize the following conversation in concise paragraphs, focusing on the key points and omitting unnecessary greetings, goodbyes, or small talk. Aim for a clear and informative representation of the entire conversation, striking a balance between brevity and comprehensiveness.
+I want you to summarize the following conversation in concise paragraphs, focusing on the key points and omitting unnecessary greetings, goodbyes, or small talk. Aim for a clear and informative representation of the entire conversation, striking a balance between brevitii and comprehensiveness.
 
 Please prioritize factual information and avoid summarizing personal anecdotes or chit-chat.
 
