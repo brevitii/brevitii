@@ -2,8 +2,7 @@ import discord
 import os
 import time
 import math
-from config import MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS, MAXIMUM_MESSAGES_COLLECTION_LENGTH, MAXIMUM_MESSAGES_COLLECTION_BATCH_SIZE, MAXIMUM_DISCORD_MESSAGE_LENGTH
-
+from config import MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS, MAXIMUM_MESSAGES_COLLECTION_BATCH_SIZE, MAXIMUM_DISCORD_MESSAGE_LENGTH
 import google.generativeai as genai
 
 genai.configure(api_key=os.environ['GOOGLE_API_KEY'])
@@ -115,9 +114,16 @@ async def on_message(message) -> None:
   #       .format(author_global_name))
   #   return
 
-  await m_channel.send(
-      'Cool {}! I will send you the abbreviation of the last {} messages in private.'
-      .format(author_global_name, num_messages))
+  if num_messages == -1:
+    # If the user did not provide a number of messages to abbreviate,
+    # we will abbreviate as many messages as possible.
+    await m_channel.send(
+        'Cool {}! I will try to abbreviate as many messages as I can and send you the result in private.'
+        .format(author_global_name))
+  else:
+    await m_channel.send(
+        'Cool {}! I will send you the abbreviation of the last {} messages in private.'
+        .format(author_global_name, num_messages))
 
   # Get the directory of the current script
   script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -133,15 +139,8 @@ async def on_message(message) -> None:
   #
   ##############################################
 
-  # Collect the last `num_messages` messages
-  await collect_messages_and_build_prompt(m_channel, prompt_body_file_path,
-                                          num_messages)
-
-  ##############################################
-  #
-  # Send the abbreviation to the user
-  #
-  ##############################################
+  # Currently, we are supporting the text only model
+  model = genai.GenerativeModel('gemini-pro')
 
   prompt_header_file_path = os.path.join(script_dir, 'prompt_header.txt')
 
@@ -150,16 +149,28 @@ async def on_message(message) -> None:
     file.seek(0)  # Move the file pointer to the beginning
     prompt_header = file.read()
 
+  greeting_sentence = 'Hello Gemini!  My name is {}.\n\n'.format(author_name)
+  end_sentence = '\n\nConversation ends NOW\n'
+
+  if num_messages == -1:
+    await collect_maximum_number_of_messages_and_build_prompt(
+        m_channel, prompt_body_file_path, model, prompt_header,
+        greeting_sentence, end_sentence)
+  else:
+    # Collect the last `num_messages` messages
+    await collect_messages_and_build_prompt(m_channel, prompt_body_file_path,
+                                            num_messages)
+
+  ##############################################
+  #
+  # Send the abbreviation to the user
+  #
+  ##############################################
+
   # Read the body
   with open(prompt_body_file_path, 'a+', encoding='utf-8') as file:
     file.seek(0)  # Move the file pointer to the beginning
     prompt_body = file.read()
-
-  greeting_sentence = 'Hello Gemini!  My name is {}.\n\n'.format(author_name)
-  end_sentence = '\n\nConversation ends NOW\n'
-
-  # Currently, we are supporting the text only model
-  model = genai.GenerativeModel('gemini-pro')
 
   prompt = greeting_sentence + '{}\n\n'.format(
       prompt_header) + prompt_body + end_sentence
@@ -214,8 +225,12 @@ async def on_message(message) -> None:
     return
 
   try:
-    brevitii_response = 'Here is the abbreviation of the last {} messages in the "{}" channel of the "{}" server:\n\n' \
-    '{}'.format(num_messages, channel_name, server_name, response.text)
+    if num_messages == -1:
+      brevitii_response = 'Here is the abbreviation of messages in the "{}" channel of the "{}" server:\n\n' \
+      '{}'.format(channel_name, server_name, response.text)
+    else:
+      brevitii_response = 'Here is the abbreviation of the last {} messages in the "{}" channel of the "{}" server:\n\n' \
+      '{}'.format(num_messages, channel_name, server_name, response.text)
   except Exception as e:
     print("Error accessing response text:", e)
     return
@@ -227,7 +242,7 @@ async def on_message(message) -> None:
     # https://stackoverflow.com/questions/9475241/split-python-string-every-nth-character
     for i in range(0, len(brevitii_response), MAXIMUM_DISCORD_MESSAGE_LENGTH):
       await m_author.send(brevitii_response[i:i +
-                                           MAXIMUM_DISCORD_MESSAGE_LENGTH])
+                                            MAXIMUM_DISCORD_MESSAGE_LENGTH])
   else:
     await m_author.send(brevitii_response)
 
@@ -247,11 +262,70 @@ async def get_num_brevitii_messages(m_channel_history) -> int:
   return num_brevitii_messages
 
 
+async def collect_maximum_number_of_messages_and_build_prompt(
+    m_channel: discord.TextChannel, prompt_body_file_path, model,
+    prompt_header, greeting_sentence, end_sentence) -> None:
+
+  m_channel_history = m_channel.history()
+
+  accumulative_prompt_body = ""
+  messsages_count = 0
+  async for msg in m_channel_history:
+    m_content = msg.content
+
+    # Skip messages sent from and to Brevitii.
+    if msg.author == client.user or m_content.startswith('$brief'):
+      continue
+
+    # Skip messages that are empty
+    # This happens if the message is an embed or an attachment
+    # TODO: Don't skip messages with attachments
+    if msg.content == '':
+      continue
+
+    collected_msg_author = msg.author
+
+    if msg.reference and msg.reference.resolved:
+      referenced_msg = msg.reference.resolved
+      referenced_msg_author = referenced_msg.author
+      accumulative_prompt_body += '{} (responds to {}): {}\n'.format(
+          collected_msg_author.name, referenced_msg_author.name, msg.content)
+    else:
+      accumulative_prompt_body += '{}: {}\n'.format(collected_msg_author.name,
+                                                    msg.content)
+
+    temp_prompt = greeting_sentence + '{}\n\n'.format(
+        prompt_header) + accumulative_prompt_body + end_sentence
+
+    num_tokens = model.count_tokens(temp_prompt).total_tokens
+    # print(f'Prompt has {num_tokens} tokens.')
+
+    if (num_tokens > MAXIMUM_GEMINI_REQUEST_INPUT_TOKENS):
+      break
+
+    # Write to file every MAXIMUM_MESSAGES_COLLECTION_BATCH_SIZE messages collected
+    if messsages_count == MAXIMUM_MESSAGES_COLLECTION_BATCH_SIZE:
+      with open(prompt_body_file_path, 'a', encoding='utf-8') as file:
+        file.write(accumulative_prompt_body)
+      accumulative_prompt_body = ""
+      messsages_count = 0
+
+    messsages_count += 1
+
+  # Write any remaining messages to file
+  if messsages_count > 0:
+    with open(prompt_body_file_path, 'a', encoding='utf-8') as file:
+      file.write(accumulative_prompt_body)
+    accumulative_prompt_body = ""
+    messsages_count = 0
+
+
 async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
                                             prompt_body_file_path,
-                                            num_messages: int = -1):
+                                            num_messages: int = -1) -> None:
   if num_messages == -1:
-    num_messages = MAXIMUM_MESSAGES_COLLECTION_LENGTH
+    print("Invalid number of messages.")
+    return
 
   m_channel_history = m_channel.history(limit=num_messages)
 
@@ -267,21 +341,24 @@ async def collect_messages_and_build_prompt(m_channel: discord.TextChannel,
 
   def write_prompt_to_file(collected_msgs: list,
                            prompt_body_file_path) -> None:
+    prompt_body = ""
+    for collected_msg in collected_msgs:
+      collected_msg_author = collected_msg.author
+
+      if collected_msg.reference and collected_msg.reference.resolved:
+        referenced_msg = collected_msg.reference.resolved
+        referenced_msg_author = referenced_msg.author
+        prompt_body += '{} (responds to {}): {}\n'.format(
+            collected_msg_author.name, referenced_msg_author.name,
+            collected_msg.content)
+        continue
+
+      prompt_body += '{}: {}\n'.format(collected_msg_author.name,
+                                       collected_msg.content)
+
+    # Write accumulated messages to the file
     with open(prompt_body_file_path, 'a', encoding='utf-8') as file:
-      file.seek(0)  # Move the file pointer to the beginning
-      for collected_msg in collected_msgs:
-        collected_msg_author = collected_msg.author
-
-        if collected_msg.reference and collected_msg.reference.resolved:
-          referenced_msg = collected_msg.reference.resolved
-          referenced_msg_author = referenced_msg.author
-          file.write('{}" (responds to {}): {}\n'.format(
-              collected_msg_author.name, referenced_msg_author.name,
-              collected_msg.content))
-          continue
-
-        file.write('{}: {}\n'.format(collected_msg_author.name,
-                                     collected_msg.content))
+      file.write(prompt_body)
 
   collected_msgs = []
   async for msg in m_channel_history:
